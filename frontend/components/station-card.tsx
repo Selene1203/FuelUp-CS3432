@@ -56,10 +56,10 @@ export function StationCard({
             </div>
           )}
 
-          {station.fuels && station.fuels.length > 0 && (
+          {station.fuels && Array.isArray(station.fuels) && station.fuels.length > 0 && (
             <div className="flex items-center gap-2 mt-3 flex-wrap">
               <Fuel className="h-4 w-4 text-muted-foreground" />
-              {station.fuels.slice(0, 4).map((fuel) => (
+              {Array.isArray(station.fuels) && station.fuels.slice(0, 4).map((fuel) => (
                 <Badge
                   key={fuel.fuel_id || fuel.fuel_type_id}
                   variant="outline"

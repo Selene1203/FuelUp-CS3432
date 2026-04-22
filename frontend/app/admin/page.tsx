@@ -89,14 +89,27 @@ export default function AdminDashboardPage() {
         await Promise.all([
           api<AdminStation>("/api/admin/station", { requiresAuth: true }),
           api<Analytics>("/api/admin/analytics", { requiresAuth: true }),
-          api<FuelType[]>("/api/fueltypes"),
-          api<Review[]>("/api/admin/reviews", { requiresAuth: true }),
+          api<FuelType[] | { fuels: FuelType[] } | { fuelTypes: FuelType[] }>("/api/fueltypes"),
+          api<Review[] | { reviews: Review[] }>("/api/admin/reviews", { requiresAuth: true }),
         ]);
 
       setStation(stationData);
       setAnalytics(analyticsData);
-      setFuelTypes(fuelTypesData);
-      setReviews(reviewsData);
+      
+      // Handle different API response formats for fuel types
+      const fuelTypesArray = Array.isArray(fuelTypesData) 
+        ? fuelTypesData 
+        : (fuelTypesData as { fuels?: FuelType[]; fuelTypes?: FuelType[] }).fuels 
+          || (fuelTypesData as { fuels?: FuelType[]; fuelTypes?: FuelType[] }).fuelTypes 
+          || [];
+      setFuelTypes(fuelTypesArray);
+      
+      // Handle different API response formats for reviews
+      const reviewsArray = Array.isArray(reviewsData) 
+        ? reviewsData 
+        : (reviewsData as { reviews?: Review[] }).reviews || [];
+      setReviews(reviewsArray);
+      
       setStationForm({
         name: stationData.name || "",
         address: stationData.address || "",
@@ -105,11 +118,14 @@ export default function AdminDashboardPage() {
       });
 
       // Fetch fuels for this station
-      const fuelsData = await api<StationFuel[]>(
+      const fuelsResponse = await api<StationFuel[] | { fuels: StationFuel[] }>(
         `/api/stations/${stationData.station_id}/fuel`,
         { requiresAuth: true }
       );
-      setFuels(fuelsData);
+      const fuelsArray = Array.isArray(fuelsResponse) 
+        ? fuelsResponse 
+        : (fuelsResponse as { fuels?: StationFuel[] }).fuels || [];
+      setFuels(fuelsArray);
     } catch (error) {
       toast.error("Failed to load admin data");
       console.error(error);
@@ -423,16 +439,19 @@ export default function AdminDashboardPage() {
                           <SelectValue placeholder="Select fuel type" />
                         </SelectTrigger>
                         <SelectContent>
-                          {fuelTypes.map((fuel) => (
-                            <SelectItem
-                              key={fuel.fuel_type_id}
-                              value={fuel.fuel_type_id.toString()}
-                            >
-                              <span style={{ color: fuel.color_hex }}>
-                                {fuel.name}
-                              </span>
-                            </SelectItem>
-                          ))}
+                          {Array.isArray(fuelTypes) && fuelTypes.map((fuel, index) => {
+                            const fuelId = fuel.fuel_type_id ?? fuel.fuel_id ?? index;
+                            return (
+                              <SelectItem
+                                key={fuelId}
+                                value={String(fuelId)}
+                              >
+                                <span style={{ color: fuel.color_hex }}>
+                                  {fuel.name || fuel.fuel_name || 'Unknown Fuel'}
+                                </span>
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
                     </div>
@@ -460,7 +479,7 @@ export default function AdminDashboardPage() {
               </Dialog>
             </CardHeader>
             <CardContent>
-              {fuels.length > 0 ? (
+              {Array.isArray(fuels) && fuels.length > 0 ? (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -471,7 +490,7 @@ export default function AdminDashboardPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {fuels.map((fuel) => (
+                    {Array.isArray(fuels) && fuels.map((fuel) => (
                       <TableRow key={fuel.fuel_id || fuel.fuel_type_id}>
                         <TableCell>
                           <span style={{ color: fuel.color_hex }}>
@@ -555,9 +574,9 @@ export default function AdminDashboardPage() {
               <CardTitle>Reviews</CardTitle>
             </CardHeader>
             <CardContent>
-              {reviews.length > 0 ? (
+              {Array.isArray(reviews) && reviews.length > 0 ? (
                 <div className="space-y-4">
-                  {reviews.map((review) => (
+                  {Array.isArray(reviews) && reviews.map((review) => (
                     <div
                       key={review.review_id}
                       className="border-b border-border pb-4 last:border-0"

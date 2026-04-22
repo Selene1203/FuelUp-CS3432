@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Search as SearchIcon, Map, List } from "lucide-react";
+import { Search as SearchIcon, Map, List, Navigation } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import {
@@ -40,10 +40,28 @@ export default function SearchPage() {
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  const [hasGpsPermission, setHasGpsPermission] = useState(false);
+  const [showTrackingMap, setShowTrackingMap] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [fuelTypeFilter, setFuelTypeFilter] = useState<string>("");
   const [countryFilter, setCountryFilter] = useState<string>("");
+  
+  // Check GPS availability and switch to map view if GPS is active
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.permissions?.query({ name: 'geolocation' }).then((result) => {
+        if (result.state === 'granted') {
+          setHasGpsPermission(true);
+        }
+        result.onchange = () => {
+          setHasGpsPermission(result.state === 'granted');
+        };
+      }).catch(() => {
+        // Permissions API not supported, try to get location anyway
+      });
+    }
+  }, []);
 
   useEffect(() => {
     const fetchFuelTypes = async () => {
@@ -132,24 +150,36 @@ export default function SearchPage() {
         <div className="max-w-lg mx-auto p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-bold text-foreground">Find a Station</h1>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setViewMode(viewMode === "list" ? "map" : "list")}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              {viewMode === "list" ? (
-                <>
-                  <Map className="h-4 w-4 mr-1" />
-                  Map
-                </>
-              ) : (
-                <>
-                  <List className="h-4 w-4 mr-1" />
-                  List
-                </>
-              )}
-            </Button>
+            <div className="flex items-center gap-1">
+              {/* GPS Tracking Button - shows map with user location */}
+              <Button
+                variant={showTrackingMap ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setShowTrackingMap(!showTrackingMap)}
+                className={showTrackingMap ? "bg-blue-500 hover:bg-blue-600 text-white" : "text-muted-foreground hover:text-foreground"}
+                title="Track my location"
+              >
+                <Navigation className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewMode(viewMode === "list" ? "map" : "list")}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                {viewMode === "list" ? (
+                  <>
+                    <Map className="h-4 w-4 mr-1" />
+                    Map
+                  </>
+                ) : (
+                  <>
+                    <List className="h-4 w-4 mr-1" />
+                    List
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
 
           <div className="flex gap-2">
@@ -180,7 +210,7 @@ export default function SearchPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Fuels</SelectItem>
-                {fuelTypes.map((fuel) => (
+                {Array.isArray(fuelTypes) && fuelTypes.map((fuel) => (
                   <SelectItem
                     key={fuel.fuel_id}
                     value={fuel.fuel_id.toString()}
@@ -209,15 +239,54 @@ export default function SearchPage() {
       </div>
 
       <div className="max-w-lg mx-auto p-4">
-        {!hasSearched ? (
+        {/* GPS Tracking Map - shows when user clicks the navigation button */}
+        {showTrackingMap && (
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-medium text-foreground flex items-center gap-2">
+                <Navigation className="h-4 w-4 text-blue-500" />
+                GPS Tracking
+              </h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowTrackingMap(false)}
+                className="text-xs text-muted-foreground"
+              >
+                Hide
+              </Button>
+            </div>
+            <StationMap
+              stations={Array.isArray(stations) ? stations : []}
+              onStationClick={(station) => router.push(`/stations/${station.station_id}`)}
+              showUserLocation={true}
+            />
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              Your location is shown with a blue marker. Search for stations to see them on the map.
+            </p>
+          </div>
+        )}
+        
+        {!hasSearched && !showTrackingMap ? (
           <div className="text-center py-12 text-muted-foreground">
             <SearchIcon className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p>Search for fuel stations</p>
             <p className="text-sm">
               Enter a name, city, or use filters to find stations
             </p>
+            {hasGpsPermission && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowTrackingMap(true)}
+                className="mt-4 border-blue-500 text-blue-500 hover:bg-blue-500/10"
+              >
+                <Navigation className="h-4 w-4 mr-2" />
+                Track My Location
+              </Button>
+            )}
           </div>
-        ) : searching ? (
+        ) : !hasSearched && showTrackingMap ? null : searching ? (
           <PageLoading />
         ) : stations.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
@@ -230,14 +299,14 @@ export default function SearchPage() {
               {stations.length} station{stations.length !== 1 ? "s" : ""} found
             </p>
             
-            {viewMode === "map" ? (
+            {viewMode === "map" && Array.isArray(stations) ? (
               <StationMap
                 stations={stations}
                 onStationClick={(station) => router.push(`/stations/${station.station_id}`)}
               />
             ) : null}
             
-            {stations.map((station) => (
+            {Array.isArray(stations) && stations.map((station) => (
               <StationCard key={station.station_id} station={station} />
             ))}
           </div>
